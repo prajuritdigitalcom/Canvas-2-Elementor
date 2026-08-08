@@ -112,7 +112,18 @@ export default function App() {
         }),
       });
 
-      const data: ConvertResponse = await response.json();
+      const responseText = await response.text();
+      let data: ConvertResponse;
+
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.error('[C2E_FRONTEND_PARSE_ERROR] Non-JSON response received:', responseText);
+        setConversionError(
+          `Respon Server Tidak Valid (HTTP ${response.status}): ${responseText.slice(0, 150)}... Silakan periksa Vercel / Cloud Run logs dengan tag [C2E_CRACK_SERVER_EXPRESS_ERROR]`
+        );
+        return;
+      }
 
       if (data.keyStatuses) {
         setKeyStatuses(data.keyStatuses);

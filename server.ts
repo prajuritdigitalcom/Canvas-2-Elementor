@@ -42,52 +42,59 @@ async function startServer() {
   // Conversion API Endpoint
   app.post('/api/convert', async (req: Request, res: Response) => {
     const startTime = Date.now();
-    const { rawHtml, userKeys } = req.body;
+    console.log(`[C2E_CONVERT_START] Request received at ${new Date().toISOString()}`);
 
-    if (!rawHtml || typeof rawHtml !== 'string' || rawHtml.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'HTML input tidak boleh kosong. Silakan masukkan HTML dari Gemini Canvas.',
-      });
-    }
+    try {
+      const { rawHtml, userKeys } = req.body;
 
-    // Determine Key Pool & Priority (§7.3)
-    let parsedUserKeys: string[] = [];
-    if (Array.isArray(userKeys)) {
-      parsedUserKeys = userKeys.filter((k) => typeof k === 'string' && k.trim().length > 0);
-    } else if (typeof userKeys === 'string') {
-      parsedUserKeys = parseKeysFromText(userKeys);
-    }
+      if (!rawHtml || typeof rawHtml !== 'string' || rawHtml.trim().length === 0) {
+        console.warn(`[C2E_VALIDATION_ERROR] Empty rawHtml received.`);
+        return res.status(400).json({
+          success: false,
+          error: 'HTML input tidak boleh kosong. Silakan masukkan HTML dari Gemini Canvas.',
+        });
+      }
 
-    let activeKeys: string[] = [];
-    let usedSource: 'user' | 'server' = 'server';
+      // Determine Key Pool & Priority (§7.3)
+      let parsedUserKeys: string[] = [];
+      if (Array.isArray(userKeys)) {
+        parsedUserKeys = userKeys.filter((k) => typeof k === 'string' && k.trim().length > 0);
+      } else if (typeof userKeys === 'string') {
+        parsedUserKeys = parseKeysFromText(userKeys);
+      }
 
-    if (parsedUserKeys.length > 0) {
-      activeKeys = parsedUserKeys;
-      usedSource = 'user';
-    } else {
-      activeKeys = getServerKeyPool();
-      usedSource = 'server';
-    }
+      let activeKeys: string[] = [];
+      let usedSource: 'user' | 'server' = 'server';
 
-    if (activeKeys.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Tidak ada API key Gemini yang tersedia. Silakan isi minimal 1 API key di panel UI atau atur GEMINI_API_KEYS di lingkungan server.',
-      });
-    }
+      if (parsedUserKeys.length > 0) {
+        activeKeys = parsedUserKeys;
+        usedSource = 'user';
+      } else {
+        activeKeys = getServerKeyPool();
+        usedSource = 'server';
+      }
 
-    // Setup key pool status tracking (§7.2)
-    const keyStatuses: KeyStatus[] = activeKeys.map((key, idx) => ({
-      index: idx,
-      maskedKey: maskApiKey(key),
-      source: usedSource,
-      status: 'idle',
-      lastError: undefined,
-    }));
+      console.log(`[C2E_POOL_INFO] Source: ${usedSource}, Total Keys in Pool: ${activeKeys.length}, Raw HTML Size: ${rawHtml.length} chars`);
 
-    // System Prompt (§8.1 PRD v1.1)
-    const systemPrompt = `Kamu adalah engine konversi format HTML. Tugasmu HANYA mengubah "kemasan" (packaging) dari HTML hasil Gemini Canvas menjadi HTML yang siap ditempel ke Elementor HTML Widget di WordPress — TANPA mengubah konten, desain, atau perilaku apapun.
+      if (activeKeys.length === 0) {
+        console.error(`[C2E_NO_KEYS_ERROR] Key pool is empty! User supplied 0, Server supplied 0.`);
+        return res.status(400).json({
+          success: false,
+          error: 'Tidak ada API key Gemini yang tersedia. Silakan isi minimal 1 API key di panel UI atau atur GEMINI_API_KEYS di lingkungan server.',
+        });
+      }
+
+      // Setup key pool status tracking (§7.2)
+      const keyStatuses: KeyStatus[] = activeKeys.map((key, idx) => ({
+        index: idx,
+        maskedKey: maskApiKey(key),
+        source: usedSource,
+        status: 'idle',
+        lastError: undefined,
+      }));
+
+      // System Prompt (§8.1 PRD v1.1)
+      const systemPrompt = `Kamu adalah engine konversi format HTML. Tugasmu HANYA mengubah "kemasan" (packaging) dari HTML hasil Gemini Canvas menjadi HTML yang siap ditempel ke Elementor HTML Widget di WordPress — TANPA mengubah konten, desain, atau perilaku apapun.
 
 ATURAN MUTLAK (tidak boleh dilanggar):
 1. DILARANG mengubah teks, konten, struktur visual, warna, layout, atau perilaku (behavior) apapun dari HTML asli. Output harus terlihat 100% identik saat dirender.
@@ -118,98 +125,118 @@ HTML SUMBER (dari Gemini Canvas):
 ${rawHtml}
 >>>`;
 
-    // Multi-key rotation loop (§7.4)
-    let conversionResult: { html: string; keyIndexUsed: number } | null = null;
+      // Multi-key rotation loop (§7.4)
+      let conversionResult: { html: string; keyIndexUsed: number } | null = null;
 
-    for (let attempt = 0; attempt < activeKeys.length; attempt++) {
-      const currentKey = activeKeys[attempt];
-      keyStatuses[attempt].status = 'in_use';
+      for (let attempt = 0; attempt < activeKeys.length; attempt++) {
+        const currentKey = activeKeys[attempt];
+        const keyMasked = keyStatuses[attempt].maskedKey;
+        const keyStartTime = Date.now();
+        keyStatuses[attempt].status = 'in_use';
 
-      try {
-        const ai = new GoogleGenAI({
-          apiKey: currentKey,
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build',
+        console.log(`[C2E_KEY_TRY] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) - Calling Gemini API (gemini-3.6-flash)...`);
+
+        try {
+          const ai = new GoogleGenAI({
+            apiKey: currentKey,
+            httpOptions: {
+              headers: {
+                'User-Agent': 'aistudio-build',
+              },
             },
-          },
-        });
+          });
 
-        // Use gemini-3.6-flash for general text & code conversion tasks
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: systemPrompt,
-        });
+          // Use gemini-3.6-flash for general text & code conversion tasks
+          const response = await ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: systemPrompt,
+          });
 
-        let outputText = response.text || '';
+          let outputText = response.text || '';
 
-        // Clean up markdown code blocks if the model enclosed output in ```html ... ```
-        outputText = outputText.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+          // Clean up markdown code blocks if the model enclosed output in ```html ... ```
+          outputText = outputText.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
 
-        if (!outputText || outputText.length < 50) {
-          throw new Error('Hasil respon model terlalu pendek atau kosong.');
+          if (!outputText || outputText.length < 50) {
+            throw new Error('Hasil respon model terlalu pendek atau kosong.');
+          }
+
+          const callDuration = Date.now() - keyStartTime;
+          keyStatuses[attempt].status = 'success';
+          conversionResult = {
+            html: outputText,
+            keyIndexUsed: attempt,
+          };
+
+          console.log(`[C2E_KEY_SUCCESS] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) SUCCESS in ${callDuration}ms! Generated ${outputText.length} chars HTML.`);
+          break; // Success! Break out of rotation loop
+        } catch (err: any) {
+          const callDuration = Date.now() - keyStartTime;
+          const errorMessage = err?.message || String(err);
+          const errLower = errorMessage.toLowerCase();
+
+          // Check if rate limit / quota / auth error (§7.4)
+          if (
+            errLower.includes('429') ||
+            errLower.includes('quota') ||
+            errLower.includes('rate_limit') ||
+            errLower.includes('resource_exhausted')
+          ) {
+            keyStatuses[attempt].status = 'rate_limited';
+            keyStatuses[attempt].lastError = 'Quota / Rate limit exceeded (429)';
+            console.warn(`[C2E_KEY_RATE_LIMITED] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) hit rate limit (429) after ${callDuration}ms. Rotating to next key...`);
+          } else if (
+            errLower.includes('401') ||
+            errLower.includes('403') ||
+            errLower.includes('invalid_api_key') ||
+            errLower.includes('api key not valid')
+          ) {
+            keyStatuses[attempt].status = 'invalid';
+            keyStatuses[attempt].lastError = 'API key tidak valid (401/403)';
+            console.warn(`[C2E_KEY_INVALID] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) rejected as invalid (401/403) after ${callDuration}ms. Rotating to next key...`);
+          } else {
+            keyStatuses[attempt].status = 'error';
+            keyStatuses[attempt].lastError = errorMessage;
+            console.error(`[C2E_KEY_ERROR] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) encountered error after ${callDuration}ms:`, errorMessage);
+          }
         }
-
-        keyStatuses[attempt].status = 'success';
-        conversionResult = {
-          html: outputText,
-          keyIndexUsed: attempt,
-        };
-        break; // Success! Break out of rotation loop
-      } catch (err: any) {
-        const errorMessage = err?.message || String(err);
-        const errLower = errorMessage.toLowerCase();
-
-        // Check if rate limit / quota / auth error (§7.4)
-        if (
-          errLower.includes('429') ||
-          errLower.includes('quota') ||
-          errLower.includes('rate_limit') ||
-          errLower.includes('resource_exhausted')
-        ) {
-          keyStatuses[attempt].status = 'rate_limited';
-          keyStatuses[attempt].lastError = 'Quota / Rate limit exceeded (429)';
-        } else if (
-          errLower.includes('401') ||
-          errLower.includes('403') ||
-          errLower.includes('invalid_api_key') ||
-          errLower.includes('api key not valid')
-        ) {
-          keyStatuses[attempt].status = 'invalid';
-          keyStatuses[attempt].lastError = 'API key tidak valid (401/403)';
-        } else {
-          keyStatuses[attempt].status = 'error';
-          keyStatuses[attempt].lastError = errorMessage;
-        }
-
-        console.warn(`[Canvas2Elementor] Key #${attempt + 1} (${keyStatuses[attempt].maskedKey}) error:`, errorMessage);
       }
-    }
 
-    const durationMs = Date.now() - startTime;
+      const durationMs = Date.now() - startTime;
 
-    if (!conversionResult) {
-      return res.status(429).json({
-        success: false,
-        error: 'Semua API key yang tersedia sedang rate-limited atau tidak valid. Silakan coba beberapa saat lagi atau tambahkan API key baru di UI.',
+      if (!conversionResult) {
+        console.error(`[C2E_ALL_KEYS_FAILED] All ${activeKeys.length} keys exhausted without success in ${durationMs}ms.`);
+        return res.status(429).json({
+          success: false,
+          error: 'Semua API key yang tersedia sedang rate-limited atau tidak valid. Silakan coba beberapa saat lagi atau tambahkan API key baru di UI.',
+          durationMs,
+          keyStatuses,
+          usedSource,
+        });
+      }
+
+      // Run post-conversion automated validation (§8.3)
+      const validation = validateConvertedHtml(conversionResult.html);
+      console.log(`[C2E_VALIDATION_DONE] Conversion finished in ${durationMs}ms. Detected Prefix: "${validation.detectedPrefix}", Validation issues count: ${validation.issues.length}`);
+
+      return res.json({
+        success: true,
+        html: conversionResult.html,
+        keyIndexUsed: conversionResult.keyIndexUsed,
         durationMs,
         keyStatuses,
+        validation,
         usedSource,
       });
+    } catch (unhandledErr: any) {
+      const durationMs = Date.now() - startTime;
+      console.error(`[C2E_CRACK_SERVER_EXPRESS_ERROR] Server crash/unhandled exception after ${durationMs}ms:`, unhandledErr);
+      return res.status(500).json({
+        success: false,
+        error: `Server Internal Error: ${unhandledErr?.message || String(unhandledErr)}`,
+        durationMs,
+      });
     }
-
-    // Run post-conversion automated validation (§8.3)
-    const validation = validateConvertedHtml(conversionResult.html);
-
-    return res.json({
-      success: true,
-      html: conversionResult.html,
-      keyIndexUsed: conversionResult.keyIndexUsed,
-      durationMs,
-      keyStatuses,
-      validation,
-      usedSource,
-    });
   });
 
   // Serve static / Vite middleware
