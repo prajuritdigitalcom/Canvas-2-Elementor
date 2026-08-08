@@ -212,7 +212,7 @@ export default function App() {
               <span className="p-1.5 rounded-lg bg-[#fe4c6f]/10 text-[#fe4c6f] border border-[#fe4c6f]/20">
                 <Sparkles className="w-4 h-4" />
               </span>
-              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+              <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
                 Re-Packaging HTML Canvas 1:1 Tanpa Perubahan Visual
               </h2>
             </div>

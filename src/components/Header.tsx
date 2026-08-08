@@ -34,9 +34,6 @@ export const Header: React.FC<HeaderProps> = ({
               <h1 className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">
                 Canvas2Elementor
               </h1>
-              <span className="bg-[#fe4c6f]/10 text-[#fe4c6f] border border-[#fe4c6f]/20 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                Prajurit Digital
-              </span>
             </div>
             <p className="text-xs text-slate-500 hidden sm:block">
               HTML Gemini Canvas → Elementor Widget Converter
