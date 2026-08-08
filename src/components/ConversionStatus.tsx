@@ -94,6 +94,10 @@ export const ConversionStatus: React.FC<ConversionStatusProps> = ({
                 badgeBg = 'bg-amber-50 border-amber-300 text-amber-800';
                 icon = <AlertTriangle className="w-3 h-3 text-amber-600" />;
                 label = 'Limit 429 (Rotasi ke Key Berikutnya)';
+              } else if (k.status === 'timeout') {
+                badgeBg = 'bg-amber-50 border-amber-300 text-amber-800';
+                icon = <Clock className="w-3 h-3 text-amber-600" />;
+                label = 'Timeout (Rotasi ke Key Berikutnya)';
               } else if (k.status === 'invalid') {
                 badgeBg = 'bg-rose-100 border-rose-300 text-rose-800';
                 icon = <ShieldAlert className="w-3 h-3 text-rose-600" />;

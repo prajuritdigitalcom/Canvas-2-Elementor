@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Code,
   Eye,
@@ -11,6 +11,8 @@ import {
   Monitor,
   Tablet,
   Smartphone,
+  Maximize2,
+  X,
 } from 'lucide-react';
 import { ValidationResult } from '../types';
 
@@ -27,6 +29,25 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [deviceWidth, setDeviceWidth] = useState<'full' | 'tablet' | 'mobile'>('full');
+  const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isFullscreenOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFullscreenOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreenOpen]);
 
   if (!outputHtml) {
     return (
@@ -226,6 +247,15 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
               >
                 <Smartphone className="w-3.5 h-3.5" />
               </button>
+              <div className="w-[1px] h-4 bg-slate-200 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => setIsFullscreenOpen(true)}
+                className="p-1.5 rounded-lg text-xs transition-all text-slate-500 hover:text-[#fe4c6f] hover:bg-white"
+                title="Layar Penuh"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
@@ -249,6 +279,37 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Full Screen Preview Overlay */}
+      {isFullscreenOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex flex-col">
+          {/* Top bar overlay */}
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-950/90 border-b border-slate-800 shrink-0">
+            <span className="text-white text-sm font-bold flex items-center gap-2">
+              <Eye className="w-4 h-4 text-[#fe4c6f]" />
+              Preview Layar Penuh — Elementor Widget
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsFullscreenOpen(false)}
+              className="p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+              title="Tutup (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Full-height iframe */}
+          <div className="flex-1 bg-white overflow-hidden">
+            <iframe
+              srcDoc={outputHtml}
+              title="Elementor Widget Live Preview - Full Screen"
+              sandbox="allow-scripts allow-modals"
+              className="w-full h-full border-none"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

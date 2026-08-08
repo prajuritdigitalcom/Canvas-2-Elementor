@@ -6,6 +6,29 @@ import { KeyStatus, ValidationResult } from '../types.js';
 // Bisa di-override lewat env var tanpa perlu redeploy kode.
 export const GEMINI_MODEL = process.env.GEMINI_MODEL_NAME || 'gemini-3.6-flash';
 
+const PER_KEY_TIMEOUT_MS = Number(process.env.GEMINI_PER_KEY_TIMEOUT_MS) || 25000;
+const RATE_LIMIT_COOLDOWN_MS = Number(process.env.GEMINI_KEY_COOLDOWN_MS) || 60000;
+
+const keyCooldownUntil = new Map<string, number>();
+
+function isKeyInCooldown(key: string): boolean {
+  const until = keyCooldownUntil.get(key);
+  return typeof until === 'number' && Date.now() < until;
+}
+
+function markKeyCooldown(key: string, ms: number = RATE_LIMIT_COOLDOWN_MS): void {
+  keyCooldownUntil.set(key, Date.now() + ms);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`TIMEOUT: ${label} tidak merespons dalam ${ms}ms`)), ms);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
 export interface ConvertRequestParams {
   rawHtml?: string;
   userKeys?: string[];
@@ -198,6 +221,14 @@ export async function runConversion(
   for (let attempt = 0; attempt < activeKeys.length; attempt++) {
     const currentKey = activeKeys[attempt];
     const keyMasked = keyStatuses[attempt].maskedKey;
+
+    if (isKeyInCooldown(currentKey)) {
+      keyStatuses[attempt].status = 'rate_limited';
+      keyStatuses[attempt].lastError = 'Masih dalam masa cooldown dari rate-limit sebelumnya';
+      console.warn(`[C2E_KEY_COOLDOWN] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) skipped due to active cooldown.`);
+      continue;
+    }
+
     const keyStartTime = Date.now();
     keyStatuses[attempt].status = 'in_use';
 
@@ -213,10 +244,14 @@ export async function runConversion(
         },
       });
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: systemPrompt,
-      });
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: systemPrompt,
+        }),
+        PER_KEY_TIMEOUT_MS,
+        `Key #${attempt + 1}`
+      );
 
       let outputText = response.text || '';
       outputText = outputText
@@ -257,7 +292,12 @@ export async function runConversion(
       ) {
         keyStatuses[attempt].status = 'rate_limited';
         keyStatuses[attempt].lastError = 'Quota / Rate limit exceeded (429)';
+        markKeyCooldown(currentKey);
         console.warn(`[C2E_KEY_RATE_LIMITED] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) hit rate limit (429) after ${callDuration}ms. Rotating to next key...`);
+      } else if (errLower.includes('timeout')) {
+        keyStatuses[attempt].status = 'timeout';
+        keyStatuses[attempt].lastError = errorMessage;
+        console.warn(`[C2E_KEY_TIMEOUT] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) timed out after ${callDuration}ms. Rotating to next key...`);
       } else if (
         errLower.includes('401') ||
         errLower.includes('403') ||

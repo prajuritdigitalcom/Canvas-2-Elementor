@@ -2,7 +2,7 @@ export interface KeyStatus {
   index: number;
   maskedKey: string;
   source: 'user' | 'server';
-  status: 'idle' | 'in_use' | 'success' | 'rate_limited' | 'invalid' | 'error';
+  status: 'idle' | 'in_use' | 'success' | 'rate_limited' | 'invalid' | 'error' | 'timeout';
   lastError?: string;
 }
 
