@@ -1,0 +1,6 @@
+{
+  "name": "Canvas2Elementor Converter",
+  "description": "Konversi Otomatis HTML Gemini Canvas ke HTML Widget Elementor bertenaga Gemini API (Multi-Key Rotation Engine)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
