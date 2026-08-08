@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Code,
   Eye,
-  Columns,
   Copy,
   Check,
   Download,
@@ -12,8 +11,6 @@ import {
   Monitor,
   Tablet,
   Smartphone,
-  ShieldAlert,
-  Info,
 } from 'lucide-react';
 import { ValidationResult } from '../types';
 
@@ -28,17 +25,18 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   validation,
   detectedPrefix,
 }) => {
-  const [viewMode, setViewMode] = useState<'code' | 'preview' | 'split'>('split');
   const [copied, setCopied] = useState(false);
   const [deviceWidth, setDeviceWidth] = useState<'full' | 'tablet' | 'mobile'>('full');
 
   if (!outputHtml) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-500 h-full flex flex-col items-center justify-center min-h-[350px]">
-        <Code className="w-12 h-12 mb-3 text-slate-700 opacity-60" />
-        <h3 className="text-sm font-bold text-slate-400">Hasil Konversi Elementor Widget</h3>
-        <p className="text-xs text-slate-600 max-w-sm mt-1 leading-relaxed">
-          Masukkan source code HTML dari Gemini Canvas di sebelah kiri, lalu klik tombol <strong className="text-amber-500">Konversi ke Elementor Widget</strong>.
+      <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-500 flex flex-col items-center justify-center min-h-[350px] shadow-sm">
+        <div className="p-3 rounded-2xl bg-slate-100 text-[#fe4c6f] border border-slate-200 mb-3">
+          <Code className="w-8 h-8" />
+        </div>
+        <h3 className="text-sm font-bold text-slate-800">Hasil Konversi Elementor Widget (Side-by-Side 2 Kolom)</h3>
+        <p className="text-xs text-slate-500 max-w-sm mt-1 leading-relaxed">
+          Masukkan source code HTML dari Gemini Canvas di atas, lalu klik tombol <strong className="text-[#fe4c6f]">Konversi ke Elementor Widget</strong> untuk melihat Kode & Preview secara bersamaan.
         </p>
       </div>
     );
@@ -71,132 +69,52 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
   const prefixToShow = detectedPrefix || validation?.detectedPrefix || 'auto-brand';
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col h-full space-y-4">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <Code className="w-5 h-5 text-emerald-400" />
-          <div>
+    <div className="space-y-4">
+      {/* Validation Report Banner (§8.3) */}
+      {validation && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-2 text-xs">
+          <div className="flex items-center justify-between font-bold text-slate-800">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
+              Laporan Validasi Otomatis Output
+            </span>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-white">2. Output Widget Elementor</h2>
-              <span className="bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1 font-bold">
-                <Tag className="w-3 h-3 text-emerald-400 inline" />
+              <span className="bg-slate-100 text-[#fe4c6f] border border-slate-200 text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <Tag className="w-3 h-3 text-[#fe4c6f] inline" />
                 Prefix: {prefixToShow}-
+              </span>
+              <span className="text-[11px] text-slate-600 font-mono bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                {charCount.toLocaleString()} karakter
               </span>
             </div>
           </div>
-        </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* View Mode Switcher */}
-          <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setViewMode('code')}
-              className={`p-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
-                viewMode === 'code'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Code View"
-            >
-              <Code className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Code</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('preview')}
-              className={`p-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
-                viewMode === 'preview'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Live Preview View"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Preview</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('split')}
-              className={`p-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
-                viewMode === 'split'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Split View"
-            >
-              <Columns className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Split</span>
-            </button>
-          </div>
-
-          {/* Copy Button */}
-          <button
-            type="button"
-            onClick={handleCopy}
-            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${
-              copied
-                ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20'
-            }`}
-          >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Tersalin!' : 'Copy to Clipboard'}</span>
-          </button>
-
-          {/* Download Button */}
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700"
-            title="Download file .html"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Validation Report Banner (§8.3) */}
-      {validation && (
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
-          <div className="flex items-center justify-between font-bold text-slate-200">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              Laporan Validasi Otomatis Output
-            </span>
-            <span className="text-[10px] text-slate-500 font-mono">
-              {charCount.toLocaleString()} karakter
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] pt-1 font-medium">
             <span
-              className={`px-2 py-0.5 rounded border ${
+              className={`px-2.5 py-1 rounded-lg border ${
                 validation.isValidDocStructure
-                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                  : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-amber-50 border-amber-200 text-amber-700'
               }`}
             >
               Structure Utuh: {validation.isValidDocStructure ? '✓ Lengkap' : '⚠ Warning'}
             </span>
 
             <span
-              className={`px-2 py-0.5 rounded border ${
+              className={`px-2.5 py-1 rounded-lg border ${
                 validation.isTailwindCdnRemoved
-                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                  : 'bg-red-500/10 border-red-500/20 text-red-300'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-rose-50 border-rose-200 text-rose-700'
               }`}
             >
               Tailwind CDN: {validation.isTailwindCdnRemoved ? '✓ Dihapus' : '❌ Masih Ada'}
             </span>
 
             <span
-              className={`px-2 py-0.5 rounded border ${
+              className={`px-2.5 py-1 rounded-lg border ${
                 validation.isJsProtected
-                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                  : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-amber-50 border-amber-200 text-amber-700'
               }`}
             >
               JS Protection: {validation.isJsProtected ? '✓ Aman' : '⚠ Perlu Check'}
@@ -205,14 +123,14 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
 
           {/* Validation Issues List */}
           {validation.issues.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-slate-900 space-y-1">
+            <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">
               {validation.issues.map((issue, idx) => (
-                <div key={idx} className="flex items-start gap-1.5 text-amber-300/90 text-[11px]">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <div key={idx} className="flex items-start gap-1.5 text-amber-800 text-[11px]">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                   <div>
                     <span>{issue.message}</span>
                     {issue.details && issue.details.length > 0 && (
-                      <span className="ml-1 font-mono text-[10px] text-amber-200/80">
+                      <span className="ml-1 font-mono text-[10px] text-amber-700">
                         ({issue.details.join(', ')})
                       </span>
                     )}
@@ -224,22 +142,65 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
         </div>
       )}
 
-      {/* Main View Area */}
-      <div className="flex-1 min-h-[400px] flex flex-col">
-        {/* Device Switcher Bar for Preview Modes */}
-        {(viewMode === 'preview' || viewMode === 'split') && (
-          <div className="bg-slate-950 px-3 py-1.5 border border-slate-800 rounded-t-xl flex items-center justify-between text-xs text-slate-400">
-            <span className="flex items-center gap-1 text-[11px] font-medium">
-              <Eye className="w-3.5 h-3.5 text-emerald-400" />
-              Live Preview (Iframe Sandbox)
-            </span>
+      {/* 2-Column Permanent Output Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        {/* Kolom 1: Mode Code */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col h-full space-y-3">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-xl bg-slate-100 text-[#fe4c6f] border border-slate-200">
+                <Code className="w-4 h-4" />
+              </div>
+              <h2 className="text-sm font-bold text-slate-900">Output Widget — Mode Code</h2>
+            </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 ${
+                  copied
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                    : 'bg-[#fe4c6f] hover:bg-[#e03a5c] text-white shadow-md shadow-[#fe4c6f]/25 active:scale-95'
+                }`}
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied ? 'Tersalin!' : 'Copy Code'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 transition-colors border border-slate-200"
+                title="Download file .html"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 overflow-auto font-mono text-xs text-rose-300 leading-relaxed max-h-[520px] min-h-[380px]">
+            <pre className="whitespace-pre-wrap break-all">{outputHtml}</pre>
+          </div>
+        </div>
+
+        {/* Kolom 2: Mode Preview */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col h-full space-y-3">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-xl bg-slate-100 text-[#fe4c6f] border border-slate-200">
+                <Eye className="w-4 h-4" />
+              </div>
+              <h2 className="text-sm font-bold text-slate-900">Output Widget — Mode Preview</h2>
+            </div>
+
+            {/* Device Switcher */}
+            <div className="bg-slate-100 p-1 rounded-xl border border-slate-200 flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setDeviceWidth('full')}
-                className={`p-1 rounded ${
-                  deviceWidth === 'full' ? 'bg-amber-500 text-slate-950 font-bold' : 'hover:text-white'
+                className={`p-1.5 rounded-lg text-xs transition-all ${
+                  deviceWidth === 'full' ? 'bg-[#fe4c6f] text-white font-bold shadow-sm' : 'text-slate-500 hover:text-slate-800'
                 }`}
                 title="Desktop (100%)"
               >
@@ -248,8 +209,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setDeviceWidth('tablet')}
-                className={`p-1 rounded ${
-                  deviceWidth === 'tablet' ? 'bg-amber-500 text-slate-950 font-bold' : 'hover:text-white'
+                className={`p-1.5 rounded-lg text-xs transition-all ${
+                  deviceWidth === 'tablet' ? 'bg-[#fe4c6f] text-white font-bold shadow-sm' : 'text-slate-500 hover:text-slate-800'
                 }`}
                 title="Tablet (768px)"
               >
@@ -258,8 +219,8 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setDeviceWidth('mobile')}
-                className={`p-1 rounded ${
-                  deviceWidth === 'mobile' ? 'bg-amber-500 text-slate-950 font-bold' : 'hover:text-white'
+                className={`p-1.5 rounded-lg text-xs transition-all ${
+                  deviceWidth === 'mobile' ? 'bg-[#fe4c6f] text-white font-bold shadow-sm' : 'text-slate-500 hover:text-slate-800'
                 }`}
                 title="Mobile (375px)"
               >
@@ -267,42 +228,25 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
               </button>
             </div>
           </div>
-        )}
 
-        {/* Content Views */}
-        <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
-          {/* Code View Block */}
-          {(viewMode === 'code' || viewMode === 'split') && (
-            <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 overflow-auto font-mono text-xs text-emerald-300 leading-relaxed max-h-[500px]">
-              <pre className="whitespace-pre-wrap break-all">{outputHtml}</pre>
-            </div>
-          )}
-
-          {/* Live Preview Iframe Block */}
-          {(viewMode === 'preview' || viewMode === 'split') && (
+          <div className="flex-1 bg-slate-100/80 border border-slate-200 rounded-xl overflow-hidden flex justify-center items-center p-2 min-h-[380px]">
             <div
-              className={`flex-1 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex justify-center items-center p-2 min-h-[350px] ${
-                viewMode === 'split' ? 'lg:max-w-[50%]' : ''
+              className={`transition-all duration-300 h-full bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden w-full ${
+                deviceWidth === 'mobile'
+                  ? 'max-w-[375px]'
+                  : deviceWidth === 'tablet'
+                  ? 'max-w-[768px]'
+                  : 'max-w-full'
               }`}
             >
-              <div
-                className={`transition-all duration-300 h-full bg-white rounded-lg shadow-2xl overflow-hidden ${
-                  deviceWidth === 'mobile'
-                    ? 'w-[375px]'
-                    : deviceWidth === 'tablet'
-                    ? 'w-[768px]'
-                    : 'w-full'
-                }`}
-              >
-                <iframe
-                  srcDoc={outputHtml}
-                  title="Elementor Widget Live Preview"
-                  sandbox="allow-scripts allow-modals allow-same-origin"
-                  className="w-full h-[480px] border-none"
-                />
-              </div>
+              <iframe
+                srcDoc={outputHtml}
+                title="Elementor Widget Live Preview"
+                sandbox="allow-scripts allow-modals allow-same-origin"
+                className="w-full h-[500px] border-none"
+              />
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

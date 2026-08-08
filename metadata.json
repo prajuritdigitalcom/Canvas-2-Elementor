@@ -1,6 +1,7 @@
 {
-  "name": "Canvas2Elementor Converter",
-  "description": "Konversi Otomatis HTML Gemini Canvas ke HTML Widget Elementor bertenaga Gemini API (Multi-Key Rotation Engine)",
+  "name": "Canvas2Elementor Converter — Prajurit Digital",
+  "description": "Tools Konversi Otomatis HTML Gemini Canvas menjadi HTML Widget Elementor WordPress 1:1 tanpa perubahan visual. Bertenaga Gemini API dengan Multi-Key Rotation Engine.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
+
