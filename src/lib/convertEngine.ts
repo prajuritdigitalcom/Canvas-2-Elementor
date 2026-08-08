@@ -1,10 +1,42 @@
 import { GoogleGenAI } from '@google/genai';
-import { maskApiKey, parseKeysFromText } from '../utils/converterValidation.js';
-import { KeyStatus } from '../types.js';
+import { maskApiKey, parseKeysFromText, validateConvertedHtml } from '../utils/converterValidation.js';
+import { KeyStatus, ValidationResult } from '../types.js';
 
 // Satu-satunya tempat nama model didefinisikan.
 // Bisa di-override lewat env var tanpa perlu redeploy kode.
 export const GEMINI_MODEL = process.env.GEMINI_MODEL_NAME || 'gemini-3.6-flash';
+
+export interface ConvertRequestParams {
+  rawHtml?: string;
+  userKeys?: string[];
+}
+
+export interface ConvertResultResponse {
+  success: boolean;
+  html?: string;
+  keyIndexUsed?: number;
+  durationMs?: number;
+  keyStatuses?: KeyStatus[];
+  validation?: ValidationResult;
+  usedSource?: 'user' | 'server';
+  error?: string;
+  statusCode: number;
+}
+
+export interface HealthResponseData {
+  status: string;
+  serverKeysAvailable: boolean;
+  serverKeysCount?: number;
+  allowServerKeyFallback: boolean;
+  model: string;
+}
+
+export function isServerKeyFallbackAllowed(): boolean {
+  if (process.env.ALLOW_SERVER_KEY_FALLBACK !== undefined) {
+    return process.env.ALLOW_SERVER_KEY_FALLBACK === 'true';
+  }
+  return false;
+}
 
 export function getServerKeyPool(): string[] {
   const multiKeys = process.env.GEMINI_API_KEYS;
@@ -16,6 +48,97 @@ export function getServerKeyPool(): string[] {
     return [singleKey.trim()];
   }
   return [];
+}
+
+export function handleHealthRequest(isDev = process.env.NODE_ENV !== 'production'): HealthResponseData {
+  const serverKeys = getServerKeyPool();
+  const fallbackAllowed = isServerKeyFallbackAllowed();
+
+  const response: HealthResponseData = {
+    status: 'ok',
+    serverKeysAvailable: serverKeys.length > 0 && fallbackAllowed,
+    allowServerKeyFallback: fallbackAllowed,
+    model: GEMINI_MODEL,
+  };
+
+  if (isDev) {
+    response.serverKeysCount = serverKeys.length;
+  }
+
+  return response;
+}
+
+export async function handleConvertRequest(params: ConvertRequestParams): Promise<ConvertResultResponse> {
+  const startTime = Date.now();
+  const rawHtml = typeof params.rawHtml === 'string' ? params.rawHtml.trim() : '';
+  const userKeysInput = Array.isArray(params.userKeys) ? params.userKeys : [];
+
+  if (!rawHtml) {
+    return {
+      success: false,
+      error: 'Data HTML mentah (rawHtml) tidak boleh kosong.',
+      statusCode: 400,
+    };
+  }
+
+  const validUserKeys = userKeysInput
+    .map((k) => (typeof k === 'string' ? k.trim() : ''))
+    .filter((k) => k.length > 0 && !k.startsWith('#'));
+
+  let activeKeys: string[] = [];
+  let usedSource: 'user' | 'server' = 'user';
+
+  if (validUserKeys.length > 0) {
+    activeKeys = validUserKeys;
+    usedSource = 'user';
+  } else {
+    const fallbackAllowed = isServerKeyFallbackAllowed();
+    if (!fallbackAllowed) {
+      return {
+        success: false,
+        error: 'Penggunaan server key pool dinonaktifkan. Silakan berikan API key Gemini Anda di UI.',
+        statusCode: 403,
+      };
+    }
+
+    const serverKeys = getServerKeyPool();
+    if (serverKeys.length === 0) {
+      return {
+        success: false,
+        error: 'Server key pool kosong dan tidak ada API key Gemini yang diberikan di UI.',
+        statusCode: 400,
+      };
+    }
+    activeKeys = serverKeys;
+    usedSource = 'server';
+  }
+
+  const { conversionResult, keyStatuses } = await runConversion(rawHtml, activeKeys, usedSource);
+  const durationMs = Date.now() - startTime;
+
+  if (!conversionResult) {
+    return {
+      success: false,
+      error: 'Semua API key yang tersedia gagal — bisa karena rate-limit, key tidak valid, atau model menghasilkan HTML yang tidak valid. Silakan coba lagi atau tambahkan API key baru di UI.',
+      durationMs,
+      keyStatuses,
+      usedSource,
+      statusCode: 429,
+    };
+  }
+
+  const validation = validateConvertedHtml(conversionResult.html);
+
+  return {
+    success: true,
+    html: conversionResult.html,
+    keyIndexUsed: conversionResult.keyIndexUsed,
+    durationMs,
+    keyStatuses,
+    validation,
+    usedSource,
+    statusCode: 200,
+  };
 }
 
 export function buildSystemPrompt(rawHtml: string): string {

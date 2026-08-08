@@ -242,7 +242,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({
               <iframe
                 srcDoc={outputHtml}
                 title="Elementor Widget Live Preview"
-                sandbox="allow-scripts allow-modals allow-same-origin"
+                sandbox="allow-scripts allow-modals"
                 className="w-full h-[500px] border-none"
               />
             </div>

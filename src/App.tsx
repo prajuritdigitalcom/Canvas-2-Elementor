@@ -160,7 +160,11 @@ export default function App() {
 
         const updatedHistory = [newItem, ...history.slice(0, 19)]; // Keep last 20
         setHistory(updatedHistory);
-        localStorage.setItem('c2e_history', JSON.stringify(updatedHistory));
+        try {
+          localStorage.setItem('c2e_history', JSON.stringify(updatedHistory));
+        } catch (storageErr) {
+          console.warn('Gagal menyimpan riwayat ke localStorage (kemungkinan kuota penuh):', storageErr);
+        }
       } else {
         setConversionError(data.error || 'Konversi gagal diproses.');
       }
