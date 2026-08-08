@@ -1,17 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { maskApiKey, parseKeysFromText } from '../src/utils/converterValidation.js';
-
-function getServerKeyPool(): string[] {
-  const multiKeys = process.env.GEMINI_API_KEYS;
-  if (multiKeys && multiKeys.trim().length > 0) {
-    return parseKeysFromText(multiKeys);
-  }
-  const singleKey = process.env.GEMINI_API_KEY;
-  if (singleKey && singleKey.trim().length > 0) {
-    return [singleKey.trim()];
-  }
-  return [];
-}
+import { maskApiKey } from '../src/utils/converterValidation.js';
+import { getServerKeyPool } from '../src/lib/convertEngine.js';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   const serverKeys = getServerKeyPool();

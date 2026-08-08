@@ -40,10 +40,20 @@ export function validateConvertedHtml(html: string): ValidationResult {
   // 3. Detect Prefix
   // Look for root container class "{prefix}-container-root" or common CSS class prefixes
   let detectedPrefix: string | null = null;
-  const rootMatch = html.match(/class=["']([a-zA-Z0-9]+)-container-root["']/i);
-  if (rootMatch && rootMatch[1]) {
-    detectedPrefix = rootMatch[1].toLowerCase();
-  } else {
+
+  const classAttrMatches = html.match(/class=["']([^"']+)["']/gi) || [];
+  for (const attr of classAttrMatches) {
+    const valueMatch = attr.match(/class=["']([^"']+)["']/i);
+    if (!valueMatch) continue;
+    const tokens = valueMatch[1].split(/\s+/);
+    const rootToken = tokens.find((t) => /^[a-zA-Z0-9]+-container-root$/i.test(t));
+    if (rootToken) {
+      detectedPrefix = rootToken.replace(/-container-root$/i, '').toLowerCase();
+      break;
+    }
+  }
+
+  if (!detectedPrefix) {
     // Fallback: look for repeated class prefixes in style block like .wn2-nav or .psp-btn
     const classPrefixMatch = html.match(/\.([a-z0-9]{2,5})-[a-z0-9-_]+\s*\{/gi);
     if (classPrefixMatch && classPrefixMatch.length > 0) {
@@ -77,9 +87,9 @@ export function validateConvertedHtml(html: string): ValidationResult {
   queryMatches.forEach((m) => scriptIds.add(m[1]));
 
   if (detectedPrefix) {
-    const prefix = detectedPrefix.toLowerCase();
+    const requiredPrefix = `${detectedPrefix.toLowerCase()}-`;
     scriptIds.forEach((id) => {
-      if (!id.toLowerCase().startsWith(`${prefix}-`) && !id.toLowerCase().startsWith(prefix)) {
+      if (!id.toLowerCase().startsWith(requiredPrefix)) {
         unprefixedIds.push(id);
       }
     });
@@ -97,15 +107,13 @@ export function validateConvertedHtml(html: string): ValidationResult {
   // 5. Check JS Safety Protection (DOMContentLoaded or null-check)
   let isJsProtected = true;
   if (scriptBlocks.length > 0 && scriptIds.size > 0) {
-    const hasDomContentLoaded = /DOMContentLoaded/i.test(fullScriptContent);
-    const hasNullCheck = /if\s*\(\s*[a-zA-Z0-9_$]+\s*\)/i.test(fullScriptContent);
-    isJsProtected = hasDomContentLoaded || hasNullCheck;
+    isJsProtected = isJsSafelyProtected(fullScriptContent);
 
     if (!isJsProtected) {
       issues.push({
         type: 'warning',
         code: 'JS_UNPROTECTED',
-        message: 'Script JavaScript tidak menggunakan proteksi DOMContentLoaded atau pengecekan null (if elem), berpotensi error jika widget dimuat secara dinamis.',
+        message: 'Script JavaScript tidak menggunakan proteksi DOMContentLoaded atau pengecekan null yang jelas pada variabel hasil getElementById/querySelector.',
       });
     }
   }
@@ -133,3 +141,32 @@ export function parseKeysFromText(rawText: string): string[] {
     .map((k) => k.trim())
     .filter((k) => k.length > 0 && !k.startsWith('#'));
 }
+
+function isJsSafelyProtected(scriptContent: string): boolean {
+  // Pendekatan A: seluruh pemanggilan DOM lookup terjadi SETELAH listener DOMContentLoaded dibuka.
+  const domReadyMatch = scriptContent.match(/document\.addEventListener\s*\(\s*['"]DOMContentLoaded['"]/i);
+  if (domReadyMatch && domReadyMatch.index !== undefined) {
+    const beforeListener = scriptContent.slice(0, domReadyMatch.index);
+    const hasLookupBeforeListener = /getElementById\s*\(|querySelector(?:All)?\s*\(/.test(beforeListener);
+    if (!hasLookupBeforeListener) return true;
+  }
+
+  // Pendekatan B: setiap variabel hasil getElementById/querySelector dijaga null-check sebelum dipakai.
+  const assignMatches = Array.from(
+    scriptContent.matchAll(
+      /(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:document\.)?(?:getElementById|querySelector(?:All)?)\s*\(/g
+    )
+  );
+
+  if (assignMatches.length === 0) {
+    // Tidak ada pola assignment langsung yang bisa dianalisis — jangan asal loloskan.
+    return false;
+  }
+
+  return assignMatches.every(([, varName]) => {
+    const guarded = new RegExp(`if\\s*\\(\\s*${varName}\\s*(?:\\)|!==?\\s*null\\s*\\)|&&)`).test(scriptContent);
+    const optionalChained = new RegExp(`${varName}\\?\\.`).test(scriptContent);
+    return guarded || optionalChained;
+  });
+}
+
