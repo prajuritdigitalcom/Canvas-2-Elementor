@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-extrabold text-base sm:text-lg text-slate-900 tracking-tight">
-                Canvas2Elementor
+                Canvas HTML Elementor
               </h1>
             </div>
             <p className="text-xs text-slate-500 hidden sm:block">
