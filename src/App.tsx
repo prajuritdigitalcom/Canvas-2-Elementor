@@ -5,6 +5,7 @@ import { ApiKeyPanel } from './components/ApiKeyPanel';
 import { InputPanel } from './components/InputPanel';
 import { ConversionStatus } from './components/ConversionStatus';
 import { OutputPanel } from './components/OutputPanel';
+import { AppLockModal } from './components/AppLockModal';
 import { SAMPLE_PRESETS, SamplePreset } from './data/samplePresets';
 import { parseKeysFromText, validateConvertedHtml } from './utils/converterValidation';
 import {
@@ -15,6 +16,11 @@ import {
 import { Sparkles, ShieldCheck, Zap, Layers } from 'lucide-react';
 
 export default function App() {
+  // App Authentication Lock state
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('c2e_auth_token') === 'authenticated';
+  });
+
   // Server state
   const [serverKeyCount, setServerKeyCount] = useState(0);
   const [serverKeysAvailable, setServerKeysAvailable] = useState(false);
@@ -56,6 +62,11 @@ export default function App() {
   }, []);
 
   const parsedUserKeys = parseKeysFromText(userKeysText);
+
+  const handleLockApp = () => {
+    localStorage.removeItem('c2e_auth_token');
+    setIsAuthenticated(false);
+  };
 
   // Save API keys handler
   const handleSaveKeys = (keysText: string, remember: boolean) => {
@@ -147,6 +158,19 @@ export default function App() {
     }
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center relative overflow-hidden select-none">
+        {/* Abstract Background Blur Orbs */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#fe4c6f]/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Lock Modal */}
+        <AppLockModal onSuccess={() => setIsAuthenticated(true)} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/70 text-slate-800 flex flex-col font-sans antialiased selection:bg-[#fe4c6f] selection:text-white">
       {/* Top Header */}
@@ -155,6 +179,7 @@ export default function App() {
         serverKeyCount={serverKeyCount}
         serverKeysAvailable={serverKeysAvailable}
         onOpenKeysModal={handleScrollToKeys}
+        onLockApp={handleLockApp}
       />
 
       {/* Main Container */}

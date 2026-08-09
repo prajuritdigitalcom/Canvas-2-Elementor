@@ -25,6 +25,37 @@ async function startServer() {
     res.json(health);
   });
 
+  // Verify Password Endpoint
+  app.post('/api/verify-password', (req: Request, res: Response) => {
+    try {
+      const expectedPassword = process.env.PASSWORD || 'csku2@prajuritdigital.com';
+      const { password } = req.body || {};
+
+      if (typeof password !== 'string') {
+        return res.status(400).json({ success: false, error: 'Format input password tidak valid.' });
+      }
+
+      if (password.trim() === expectedPassword.trim()) {
+        return res.status(200).json({
+          success: true,
+          message: 'Password benar. Akses diterima.',
+          token: 'authenticated',
+        });
+      } else {
+        return res.status(401).json({
+          success: false,
+          error: 'Password yang Anda masukkan salah.',
+        });
+      }
+    } catch (err: any) {
+      console.error(`[C2E_VERIFY_PASSWORD_ERROR] Exception:`, err);
+      return res.status(500).json({
+        success: false,
+        error: `Server Internal Error: ${err?.message || String(err)}`,
+      });
+    }
+  });
+
   // Conversion API Endpoint
   app.post('/api/convert', async (req: Request, res: Response) => {
     console.log(`[C2E_CONVERT_START] Request received at ${new Date().toISOString()}`);

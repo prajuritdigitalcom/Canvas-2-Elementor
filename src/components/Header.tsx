@@ -1,11 +1,12 @@
 import React from 'react';
-import { Key, Sparkles, Server, ShieldAlert } from 'lucide-react';
+import { Key, Server, ShieldAlert, Lock } from 'lucide-react';
 
 interface HeaderProps {
   userKeyCount: number;
   serverKeyCount: number;
   serverKeysAvailable: boolean;
   onOpenKeysModal: () => void;
+  onLockApp?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -13,6 +14,7 @@ export const Header: React.FC<HeaderProps> = ({
   serverKeyCount,
   serverKeysAvailable,
   onOpenKeysModal,
+  onLockApp,
 }) => {
   return (
     <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-800 sticky top-0 z-40 shadow-sm">
@@ -42,7 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Key Pool Indicator */}
           <button
             onClick={onOpenKeysModal}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition-colors text-xs font-semibold text-slate-700"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition-colors text-xs font-semibold text-slate-700 cursor-pointer"
             title="Kelola API Key Gemini"
           >
             <Key className="w-3.5 h-3.5 text-[#fe4c6f]" />
@@ -63,8 +65,21 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             )}
           </button>
+
+          {/* Lock App Button */}
+          {onLockApp && (
+            <button
+              onClick={onLockApp}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors text-xs font-semibold cursor-pointer"
+              title="Kunci Kembali Website"
+            >
+              <Lock className="w-3.5 h-3.5 text-rose-600" />
+              <span className="hidden sm:inline">Kunci Website</span>
+            </button>
+          )}
         </div>
       </div>
     </header>
   );
 };
+
