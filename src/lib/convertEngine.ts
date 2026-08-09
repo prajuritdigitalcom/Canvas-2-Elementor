@@ -6,9 +6,17 @@ import { KeyStatus, ValidationResult } from '../types.js';
 // Bisa di-override lewat env var tanpa perlu redeploy kode.
 export const GEMINI_MODEL = process.env.GEMINI_MODEL_NAME || 'gemini-3.6-flash';
 
-const PER_KEY_TIMEOUT_MS = Number(process.env.GEMINI_PER_KEY_TIMEOUT_MS) || 90000;
-const TOTAL_BUDGET_MS = Number(process.env.GEMINI_TOTAL_BUDGET_MS) || 270000;
-const MIN_REMAINING_MS_TO_ATTEMPT = 5000;
+// Satu-satunya "jaring pengaman" waktu: bungkus SELURUH proses (semua percobaan
+// key digabung) dengan satu timeout global, sengaja disetel sedikit di bawah
+// maxDuration Vercel (lihat vercel.json -> functions.api/convert.ts). Ini BUKAN
+// timeout per-key (itu sengaja dihapus) - tujuannya cuma mencegah Vercel sendiri
+// yang memaksa mati dengan 504 kosong kalau suatu saat benar-benar ada panggilan
+// yang macet total tanpa respons/tanpa error sama sekali (skenario sangat jarang).
+// Kegagalan karena LAMBAT (tapi tetap berjalan menuju sukses) TIDAK memicu rotasi
+// ke key lain lagi - key baru akan mengalami kelambatan yang sama persis, jadi
+// merotasi hanya memecah waktu yang ada tanpa manfaat.
+const OVERALL_SAFETY_TIMEOUT_MS = Number(process.env.GEMINI_OVERALL_SAFETY_TIMEOUT_MS) || 285000;
+
 const RATE_LIMIT_COOLDOWN_MS = Number(process.env.GEMINI_KEY_COOLDOWN_MS) || 60000;
 
 const keyCooldownUntil = new Map<string, number>();
@@ -219,116 +227,119 @@ export async function runConversion(
 
   const systemPrompt = buildSystemPrompt(rawHtml);
   let conversionResult: { html: string; keyIndexUsed: number } | null = null;
-  const runStartTime = Date.now();
 
-  for (let attempt = 0; attempt < activeKeys.length; attempt++) {
-    const currentKey = activeKeys[attempt];
-    const keyMasked = keyStatuses[attempt].maskedKey;
+  // Loop percobaan key, sekarang TANPA timeout per-key - setiap key dibiarkan
+  // selesai secara natural (persis seperti sebelum ada mekanisme timeout sama
+  // sekali), karena proses konversi ini memang butuh waktu lama secara wajar.
+  // Rotasi ke key berikutnya HANYA terjadi untuk error cepat & pasti (429/401/403),
+  // bukan karena lambat.
+  const attemptAllKeys = async (): Promise<void> => {
+    for (let attempt = 0; attempt < activeKeys.length; attempt++) {
+      const currentKey = activeKeys[attempt];
+      const keyMasked = keyStatuses[attempt].maskedKey;
 
-    if (isKeyInCooldown(currentKey)) {
-      keyStatuses[attempt].status = 'rate_limited';
-      keyStatuses[attempt].lastError = 'Masih dalam masa cooldown dari rate-limit sebelumnya';
-      console.warn(`[C2E_KEY_COOLDOWN] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) skipped due to active cooldown.`);
-      continue;
-    }
-
-    const remainingBudgetMs = TOTAL_BUDGET_MS - (Date.now() - runStartTime);
-    if (remainingBudgetMs < MIN_REMAINING_MS_TO_ATTEMPT) {
-      console.warn(`[C2E_BUDGET_EXHAUSTED] Sisa anggaran waktu total tinggal ${remainingBudgetMs}ms, menghentikan rotasi sebelum Key #${attempt + 1}/${activeKeys.length}.`);
-      for (let skipIdx = attempt; skipIdx < activeKeys.length; skipIdx++) {
-        keyStatuses[skipIdx].status = 'skipped';
-        keyStatuses[skipIdx].lastError = 'Anggaran waktu total request sudah habis, key ini tidak sempat dicoba';
+      if (isKeyInCooldown(currentKey)) {
+        keyStatuses[attempt].status = 'rate_limited';
+        keyStatuses[attempt].lastError = 'Masih dalam masa cooldown dari rate-limit sebelumnya';
+        console.warn(`[C2E_KEY_COOLDOWN] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) skipped due to active cooldown.`);
+        continue;
       }
-      break;
-    }
 
-    const effectiveTimeoutMs = Math.max(
-      1000,
-      Math.min(PER_KEY_TIMEOUT_MS, remainingBudgetMs - 1000)
-    );
+      const keyStartTime = Date.now();
+      keyStatuses[attempt].status = 'in_use';
 
-    const keyStartTime = Date.now();
-    keyStatuses[attempt].status = 'in_use';
+      console.log(`[C2E_KEY_TRY] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) - Calling Gemini API (${GEMINI_MODEL})...`);
 
-    console.log(`[C2E_KEY_TRY] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) - Calling Gemini API (${GEMINI_MODEL}), timeout budget: ${effectiveTimeoutMs}ms...`);
-
-    try {
-      const ai = new GoogleGenAI({
-        apiKey: currentKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
+      try {
+        const ai = new GoogleGenAI({
+          apiKey: currentKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build',
+            },
           },
-        },
-      });
+        });
 
-      const response = await withTimeout(
-        ai.models.generateContent({
+        // Tidak ada withTimeout di sini lagi - dibiarkan menunggu secara alami,
+        // dijaga hanya oleh OVERALL_SAFETY_TIMEOUT_MS di level pemanggil di bawah.
+        const response = await ai.models.generateContent({
           model: GEMINI_MODEL,
           contents: systemPrompt,
-        }),
-        effectiveTimeoutMs,
-        `Key #${attempt + 1}`
-      );
+        });
 
-      let outputText = response.text || '';
-      outputText = outputText
-        .replace(/^```html\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
+        let outputText = response.text || '';
+        outputText = outputText
+          .replace(/^```html\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/\s*```$/i, '')
+          .trim();
 
-      if (!outputText || outputText.length < 50) {
-        throw new Error('Hasil respon model terlalu pendek atau kosong.');
+        if (!outputText || outputText.length < 50) {
+          throw new Error('Hasil respon model terlalu pendek atau kosong.');
+        }
+
+        const hasDoctype = /<!DOCTYPE\s+html/i.test(outputText);
+        const hasHtmlTag = /<html[\s>]/i.test(outputText) && /<\/html>/i.test(outputText);
+        if (!hasDoctype || !hasHtmlTag) {
+          throw new Error('Hasil respon model tidak memiliki struktur HTML dokumen yang valid (DOCTYPE atau tag <html> hilang).');
+        }
+
+        const callDuration = Date.now() - keyStartTime;
+        keyStatuses[attempt].status = 'success';
+        conversionResult = {
+          html: outputText,
+          keyIndexUsed: attempt,
+        };
+
+        console.log(`[C2E_KEY_SUCCESS] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) SUCCESS in ${callDuration}ms! Generated ${outputText.length} chars HTML.`);
+        return;
+      } catch (err: any) {
+        const callDuration = Date.now() - keyStartTime;
+        const errorMessage = err?.message || String(err);
+        const errLower = errorMessage.toLowerCase();
+
+        if (
+          errLower.includes('429') ||
+          errLower.includes('quota') ||
+          errLower.includes('rate_limit') ||
+          errLower.includes('resource_exhausted')
+        ) {
+          keyStatuses[attempt].status = 'rate_limited';
+          keyStatuses[attempt].lastError = 'Quota / Rate limit exceeded (429)';
+          markKeyCooldown(currentKey);
+          console.warn(`[C2E_KEY_RATE_LIMITED] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) hit rate limit (429) after ${callDuration}ms. Rotating to next key...`);
+        } else if (
+          errLower.includes('401') ||
+          errLower.includes('403') ||
+          errLower.includes('invalid_api_key') ||
+          errLower.includes('api key not valid')
+        ) {
+          keyStatuses[attempt].status = 'invalid';
+          keyStatuses[attempt].lastError = 'API key tidak valid (401/403)';
+          console.warn(`[C2E_KEY_INVALID] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) rejected as invalid (401/403) after ${callDuration}ms. Rotating to next key...`);
+        } else {
+          keyStatuses[attempt].status = 'error';
+          keyStatuses[attempt].lastError = errorMessage;
+          console.error(`[C2E_KEY_ERROR] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) encountered error after ${callDuration}ms:`, errorMessage);
+        }
       }
+    }
+  };
 
-      const hasDoctype = /<!DOCTYPE\s+html/i.test(outputText);
-      const hasHtmlTag = /<html[\s>]/i.test(outputText) && /<\/html>/i.test(outputText);
-      if (!hasDoctype || !hasHtmlTag) {
-        throw new Error('Hasil respon model tidak memiliki struktur HTML dokumen yang valid (DOCTYPE atau tag <html> hilang).');
-      }
-
-      const callDuration = Date.now() - keyStartTime;
-      keyStatuses[attempt].status = 'success';
-      conversionResult = {
-        html: outputText,
-        keyIndexUsed: attempt,
-      };
-
-      console.log(`[C2E_KEY_SUCCESS] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) SUCCESS in ${callDuration}ms! Generated ${outputText.length} chars HTML.`);
-      break;
-    } catch (err: any) {
-      const callDuration = Date.now() - keyStartTime;
-      const errorMessage = err?.message || String(err);
-      const errLower = errorMessage.toLowerCase();
-
-      if (
-        errLower.includes('429') ||
-        errLower.includes('quota') ||
-        errLower.includes('rate_limit') ||
-        errLower.includes('resource_exhausted')
-      ) {
-        keyStatuses[attempt].status = 'rate_limited';
-        keyStatuses[attempt].lastError = 'Quota / Rate limit exceeded (429)';
-        markKeyCooldown(currentKey);
-        console.warn(`[C2E_KEY_RATE_LIMITED] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) hit rate limit (429) after ${callDuration}ms. Rotating to next key...`);
-      } else if (errLower.includes('timeout')) {
-        keyStatuses[attempt].status = 'timeout';
-        keyStatuses[attempt].lastError = errorMessage;
-        console.warn(`[C2E_KEY_TIMEOUT] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) timed out after ${callDuration}ms. Rotating to next key...`);
-      } else if (
-        errLower.includes('401') ||
-        errLower.includes('403') ||
-        errLower.includes('invalid_api_key') ||
-        errLower.includes('api key not valid')
-      ) {
-        keyStatuses[attempt].status = 'invalid';
-        keyStatuses[attempt].lastError = 'API key tidak valid (401/403)';
-        console.warn(`[C2E_KEY_INVALID] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) rejected as invalid (401/403) after ${callDuration}ms. Rotating to next key...`);
-      } else {
-        keyStatuses[attempt].status = 'error';
-        keyStatuses[attempt].lastError = errorMessage;
-        console.error(`[C2E_KEY_ERROR] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) encountered error after ${callDuration}ms:`, errorMessage);
+  try {
+    await withTimeout(attemptAllKeys(), OVERALL_SAFETY_TIMEOUT_MS, 'Seluruh proses konversi');
+  } catch (safetyErr: any) {
+    // Safety-net global kena (sangat jarang) - tandai key yang sedang jalan sebagai
+    // timeout, dan key yang belum sempat dicoba sebagai skipped, supaya UI tetap
+    // menunjukkan status yang jujur alih-alih diam saja.
+    console.error(`[C2E_OVERALL_TIMEOUT] Proses konversi melewati batas aman ${OVERALL_SAFETY_TIMEOUT_MS}ms:`, safetyErr?.message || safetyErr);
+    for (const ks of keyStatuses) {
+      if (ks.status === 'in_use') {
+        ks.status = 'timeout';
+        ks.lastError = `Melewati batas waktu aman keseluruhan (${OVERALL_SAFETY_TIMEOUT_MS}ms)`;
+      } else if (ks.status === 'idle') {
+        ks.status = 'skipped';
+        ks.lastError = 'Waktu aman keseluruhan sudah habis sebelum key ini sempat dicoba';
       }
     }
   }
