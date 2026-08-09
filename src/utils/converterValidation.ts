@@ -155,6 +155,71 @@ export function validateConvertedHtml(html: string, rawHtml?: string): Validatio
     }
   }
 
+  // 8. Check for conflicts between inline style and @media responsive classes
+  const RESPONSIVE_LAYOUT_PROPS = [
+    'display',
+    'grid-template-columns',
+    'grid-template-rows',
+    'flex-direction',
+    'text-align',
+    'justify-content',
+    'align-items',
+    'gap',
+    'grid-column',
+    'grid-row',
+    'flex-wrap',
+    'flex',
+  ];
+
+  const mediaBlocks = html.match(/@media[^{]+\{[\s\S]*?(?:\}\s*\}|\}(?=\s*@media|\s*<\/style>|$))/gi) || [];
+  const responsiveClassProps = new Map<string, Set<string>>();
+
+  mediaBlocks.forEach((block) => {
+    const ruleMatches = Array.from(block.matchAll(/\.([a-zA-Z0-9_-]+)\s*\{([^}]*)\}/g));
+    ruleMatches.forEach(([, className, body]) => {
+      RESPONSIVE_LAYOUT_PROPS.forEach((prop) => {
+        if (new RegExp(`\\b${prop}\\s*:`, 'i').test(body)) {
+          if (!responsiveClassProps.has(className)) responsiveClassProps.set(className, new Set());
+          responsiveClassProps.get(className)!.add(prop);
+        }
+      });
+    });
+  });
+
+  if (responsiveClassProps.size > 0) {
+    const tagMatches = html.match(/<[a-z][a-z0-9]*\b[^>]*>/gi) || [];
+    const conflicts: string[] = [];
+
+    tagMatches.forEach((tag) => {
+      const classAttrMatch = tag.match(/\bclass=["']([^"']+)["']/i);
+      const styleAttrMatch = tag.match(/\bstyle=["']([^"']+)["']/i);
+
+      if (classAttrMatch && styleAttrMatch) {
+        const classNames = classAttrMatch[1].trim().split(/\s+/);
+        const styleAttr = styleAttrMatch[1];
+
+        classNames.forEach((cls) => {
+          const respProps = responsiveClassProps.get(cls);
+          if (!respProps) return;
+          respProps.forEach((prop) => {
+            if (new RegExp(`\\b${prop}\\s*:`, 'i').test(styleAttr)) {
+              conflicts.push(`.${cls} (property "${prop}")`);
+            }
+          });
+        });
+      }
+    });
+
+    if (conflicts.length > 0) {
+      const uniqueConflicts = Array.from(new Set(conflicts));
+      issues.push({
+        type: 'error',
+        code: 'INLINE_STYLE_OVERRIDES_MEDIA_QUERY',
+        message: `Ditemukan ${uniqueConflicts.length} elemen dengan inline style yang property-nya bentrok dengan override responsif di class yang sama — override di @media TIDAK AKAN PERNAH berlaku karena inline style selalu menang: ${uniqueConflicts.slice(0, 5).join(', ')}${uniqueConflicts.length > 5 ? ', ...' : ''}`,
+      });
+    }
+  }
+
   return {
     isValidDocStructure,
     isTailwindCdnRemoved,
