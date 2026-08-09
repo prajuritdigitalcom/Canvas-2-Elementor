@@ -1,6 +1,6 @@
 import { ValidationIssue, ValidationResult } from '../types';
 
-export function validateConvertedHtml(html: string): ValidationResult {
+export function validateConvertedHtml(html: string, rawHtml?: string): ValidationResult {
   const issues: ValidationIssue[] = [];
 
   // 1. Check Document Structure
@@ -114,6 +114,43 @@ export function validateConvertedHtml(html: string): ValidationResult {
         type: 'warning',
         code: 'JS_UNPROTECTED',
         message: 'Script JavaScript tidak menggunakan proteksi DOMContentLoaded atau pengecekan null yang jelas pada variabel hasil getElementById/querySelector.',
+      });
+    }
+  }
+
+  // 6. Check CSS reset (body/html margin) — pengganti Tailwind Preflight yang dihapus
+  const styleBlocks = (html.match(/<style[\s\S]*?>[\s\S]*?<\/style>/gi) || []).join('\n');
+  const hasBodyMarginReset =
+    /html\s*,\s*body\s*\{[^}]*margin\s*:\s*0/i.test(styleBlocks) ||
+    /body\s*\{[^}]*margin\s*:\s*0/i.test(styleBlocks) ||
+    /\*\s*\{[^}]*margin\s*:\s*0/i.test(styleBlocks);
+
+  if (!hasBodyMarginReset) {
+    issues.push({
+      type: 'error',
+      code: 'MISSING_BODY_MARGIN_RESET',
+      message: 'Tidak ditemukan reset "margin: 0" untuk html/body/* di <style>. Karena Tailwind Preflight dihapus, browser akan pakai margin default 8px pada <body>, menyebabkan gap terlihat di semua tepi halaman.',
+    });
+  }
+
+  // 7. Check responsive prefixes conversion
+  if (rawHtml) {
+    const responsivePrefixesInSource = new Set(
+      (rawHtml.match(/\b(sm|md|lg|xl):[a-zA-Z0-9_.\/\[\]-]+/g) || [])
+    );
+    const mediaQueryCount = (html.match(/@media[^{]+\{/g) || []).length;
+
+    if (responsivePrefixesInSource.size > 0 && mediaQueryCount === 0) {
+      issues.push({
+        type: 'error',
+        code: 'RESPONSIVE_PREFIX_DROPPED',
+        message: `Source punya ${responsivePrefixesInSource.size} pola class responsif (sm:/md:/lg:/xl:), tapi hasil konversi tidak punya satupun @media block. Kemungkinan besar semua breakpoint dikonversi jadi nilai flat.`,
+      });
+    } else if (responsivePrefixesInSource.size > 3 && mediaQueryCount < 2) {
+      issues.push({
+        type: 'warning',
+        code: 'RESPONSIVE_PREFIX_UNDERCONVERTED',
+        message: `Source punya ${responsivePrefixesInSource.size} pola class responsif tapi hasil konversi cuma ${mediaQueryCount} @media block — kemungkinan sebagian breakpoint hilang.`,
       });
     }
   }

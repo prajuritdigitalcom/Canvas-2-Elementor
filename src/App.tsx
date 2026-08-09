@@ -126,7 +126,7 @@ export default function App() {
       if (data.success && data.html) {
         setOutputHtml(data.html);
 
-        const valResult = data.validation || validateConvertedHtml(data.html);
+        const valResult = data.validation || validateConvertedHtml(data.html, rawHtml);
         setValidation(valResult);
       } else {
         setConversionError(data.error || 'Konversi gagal diproses.');

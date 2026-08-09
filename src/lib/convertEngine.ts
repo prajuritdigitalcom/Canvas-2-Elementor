@@ -160,7 +160,7 @@ export async function handleConvertRequest(params: ConvertRequestParams): Promis
     };
   }
 
-  const validation = validateConvertedHtml(conversionResult.html);
+  const validation = validateConvertedHtml(conversionResult.html, rawHtml);
 
   return {
     success: true,
@@ -181,6 +181,12 @@ ATURAN MUTLAK (tidak boleh dilanggar):
 1. DILARANG mengubah teks, konten, struktur visual, warna, layout, atau perilaku (behavior) apapun dari HTML asli. Output harus terlihat 100% identik saat dirender.
 2. JANGAN hapus struktur dokumen. Pertahankan <!DOCTYPE html>, <html>, <head>, dan <body> persis seperti dokumen HTML utuh — JANGAN dipotong jadi fragment.
 3. Hapus HANYA dua hal: (a) <script src="https://cdn.tailwindcss.com"></script>, dan (b) blok <script>tailwind.config = {...}</script>. Keduanya harus lenyap total dari output.
+3a. Karena script Tailwind CDN dihapus (lihat aturan #3), Preflight (base CSS reset) yang biasanya otomatis di-inject oleh Tailwind IKUT HILANG dan WAJIB digantikan manual. Tambahkan blok berikut sebagai baris PALING ATAS di dalam <style>, sebelum aturan :root atau apapun lainnya:
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+
+    Ini wajib ada di SETIAP hasil konversi tanpa terkecuali, bahkan kalau source tidak terlihat menulis reset ini secara eksplisit di HTML-nya — reset itu datang dari Preflight yang implisit, bukan dari kode yang terlihat.
 4. Tentukan SATU prefix pendek (2-4 huruf) dari nama brand/bisnis yang ada di <title> atau konten halaman (contoh: "Warung Nyaman 2" -> "wn2", "Family Aqiqah" -> "fa", "Parama Satya Pertiwi" -> "psp"). Prefix ini WAJIB dipakai konsisten untuk:
    a. Semua class CSS baru yang kamu buat.
    b. SEMUA id yang direferensikan oleh JavaScript (getElementById, querySelector), TANPA TERKECUALI — termasuk id pada elemen form sekalipun.
@@ -189,7 +195,12 @@ ATURAN MUTLAK (tidak boleh dilanggar):
    a. Jika kombinasi class yang sama dipakai berulang pada beberapa elemen sejenis (nav link, card, button, dll) -> gabungkan jadi SATU class semantik baru dengan nama deskriptif berprefix (contoh: .wn2-nav-link), bukan class terpisah per-utility.
    b. Jika sebuah kombinasi class hanya dipakai SEKALI di seluruh dokumen (styling unik untuk 1 elemen spesifik) -> tulis langsung sebagai inline style="..." pada elemen tersebut, JANGAN buat class CSS baru untuk ini.
 6. Variant Tailwind wajib dikonversi presisi, bukan didekati:
-   a. Prefix responsive (sm:, md:, lg:, xl:) -> @media (max-width: ...) asli dengan breakpoint Tailwind standar (640/768/1024/1280px), desktop-first, dikumpulkan dalam satu blok menjelang akhir <style>.
+   a. Prefix responsive (sm:, md:, lg:, xl:) WAJIB dikonversi dengan aturan berikut, TANPA kecuali dan TANPA didekati/dirata-ratakan:
+      - Base value (class tanpa prefix, mis. "py-20" dalam "py-20 md:py-32") adalah nilai DEFAULT di luar media query — ini berlaku untuk SEMUA ukuran layar sampai ada breakpoint yang meng-override.
+      - Setiap prefix (sm:/md:/lg:/xl:) WAJIB menjadi satu deklarasi terpisah di dalam @media (min-width: ...) { } dengan breakpoint Tailwind standar MOBILE-FIRST (sm=640px, md=768px, lg=1024px, xl=1280px), BUKAN max-width/desktop-first. Alasan: Tailwind sendiri mobile-first, base value = mobile, prefix = override ke atas. Jangan pernah membalik arah ini atau memakai nilai breakpoint sebagai default lalu override ke bawah.
+      - DILARANG KERAS menghasilkan satu nilai flat (tanpa media query) untuk class yang di source aslinya punya lebih dari satu breakpoint. Kalau ada N breakpoint pada satu properti, output HARUS punya N deklarasi CSS (1 base + (N-1) di dalam media query), tidak boleh kurang.
+      - DILARANG mengarang/membulatkan nilai antara (contoh: py-20 md:py-28 tidak boleh jadi 6rem flat — itu bukan nilai 20 (5rem) maupun 28 (7rem) manapun).
+      - Sebelum menulis <style>, buat DAFTAR INTERNAL (untuk diri sendiri, tidak usah ditampilkan ke output) semua kombinasi class dengan prefix responsif yang ada di source, beserta nilai px/rem persis per breakpoint (rujuk skala spacing Tailwind resmi: 1=0.25rem, 2=0.5rem, ... 20=5rem, 28=7rem, 32=8rem, dst — jangan menebak). Pastikan SETIAP baris di daftar itu punya representasi CSS yang match persis di output akhir sebelum dianggap selesai.
    b. hover: -> :hover asli. focus: -> :focus asli. selection: -> ::selection asli.
    c. Pola "group" + "group-hover:" -> WAJIB dikonversi jadi compound selector ".{prefix}-group:hover .{prefix}-group-hover-nama-efek { ... }", karena ini titik paling sering gagal dikonversi asal-asalan.
 7. Warna dari tailwind.config.theme.extend.colors (dan warna lain yang dipakai berulang) -> dipindah jadi CSS custom property di :root, prefix sama, misal "--{prefix}-navy: #0B192C;", lalu dipakai lewat var(--{prefix}-navy) di semua rule CSS.
