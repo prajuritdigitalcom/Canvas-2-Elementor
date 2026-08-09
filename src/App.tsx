@@ -5,14 +5,12 @@ import { ApiKeyPanel } from './components/ApiKeyPanel';
 import { InputPanel } from './components/InputPanel';
 import { ConversionStatus } from './components/ConversionStatus';
 import { OutputPanel } from './components/OutputPanel';
-import { HistoryModal } from './components/HistoryModal';
 import { SAMPLE_PRESETS, SamplePreset } from './data/samplePresets';
 import { parseKeysFromText, validateConvertedHtml } from './utils/converterValidation';
 import {
   KeyStatus,
   ValidationResult,
   ConvertResponse,
-  ConversionHistoryItem,
 } from './types';
 import { Sparkles, ShieldCheck, Zap, Layers } from 'lucide-react';
 
@@ -28,7 +26,6 @@ export default function App() {
 
   // Modal open states
   const [isKeysModalOpen, setIsKeysModalOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   // Input HTML & Preset state
   const [rawHtml, setRawHtml] = useState('');
@@ -42,16 +39,6 @@ export default function App() {
   const [durationMs, setDurationMs] = useState<number | undefined>(undefined);
   const [usedSource, setUsedSource] = useState<'user' | 'server' | undefined>(undefined);
   const [conversionError, setConversionError] = useState<string | null>(null);
-
-  // History state
-  const [history, setHistory] = useState<ConversionHistoryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('c2e_history');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
 
   // Fetch server health on mount
   useEffect(() => {
@@ -141,30 +128,6 @@ export default function App() {
 
         const valResult = data.validation || validateConvertedHtml(data.html);
         setValidation(valResult);
-
-        // Add to history
-        const titleMatch = rawHtml.match(/<title>([\s\S]*?)<\/title>/i);
-        const title = titleMatch ? titleMatch[1].trim() : 'Konversi Canvas';
-
-        const newItem: ConversionHistoryItem = {
-          id: Date.now().toString(),
-          timestamp: new Date().toISOString(),
-          title,
-          detectedPrefix: valResult.detectedPrefix || 'wn2',
-          rawLength: rawHtml.length,
-          outputLength: data.html.length,
-          rawHtml,
-          outputHtml: data.html,
-          validation: valResult,
-        };
-
-        const updatedHistory = [newItem, ...history.slice(0, 19)]; // Keep last 20
-        setHistory(updatedHistory);
-        try {
-          localStorage.setItem('c2e_history', JSON.stringify(updatedHistory));
-        } catch (storageErr) {
-          console.warn('Gagal menyimpan riwayat ke localStorage (kemungkinan kuota penuh):', storageErr);
-        }
       } else {
         setConversionError(data.error || 'Konversi gagal diproses.');
       }
@@ -173,17 +136,6 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleSelectHistoryItem = (item: ConversionHistoryItem) => {
-    setRawHtml(item.rawHtml);
-    setOutputHtml(item.outputHtml);
-    setValidation(item.validation);
-  };
-
-  const handleClearHistory = () => {
-    setHistory([]);
-    localStorage.removeItem('c2e_history');
   };
 
   const handleScrollToKeys = () => {
@@ -203,8 +155,6 @@ export default function App() {
         serverKeyCount={serverKeyCount}
         serverKeysAvailable={serverKeysAvailable}
         onOpenKeysModal={handleScrollToKeys}
-        onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
-        historyCount={history.length}
       />
 
       {/* Main Container */}
@@ -293,14 +243,6 @@ export default function App() {
         userKeysText={userKeysText}
         onSaveKeys={handleSaveKeys}
         serverKeyCount={serverKeyCount}
-      />
-
-      <HistoryModal
-        isOpen={isHistoryModalOpen}
-        onClose={() => setIsHistoryModalOpen(false)}
-        history={history}
-        onSelectHistoryItem={handleSelectHistoryItem}
-        onClearHistory={handleClearHistory}
       />
     </div>
   );

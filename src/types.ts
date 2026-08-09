@@ -2,7 +2,7 @@ export interface KeyStatus {
   index: number;
   maskedKey: string;
   source: 'user' | 'server';
-  status: 'idle' | 'in_use' | 'success' | 'rate_limited' | 'invalid' | 'error' | 'timeout';
+  status: 'idle' | 'in_use' | 'success' | 'rate_limited' | 'invalid' | 'error' | 'timeout' | 'skipped';
   lastError?: string;
 }
 
@@ -38,16 +38,4 @@ export interface ConvertResponse {
   keyStatuses?: KeyStatus[];
   validation?: ValidationResult;
   usedSource?: 'user' | 'server';
-}
-
-export interface ConversionHistoryItem {
-  id: string;
-  timestamp: string;
-  title: string;
-  detectedPrefix: string;
-  rawLength: number;
-  outputLength: number;
-  rawHtml: string;
-  outputHtml: string;
-  validation: ValidationResult;
 }

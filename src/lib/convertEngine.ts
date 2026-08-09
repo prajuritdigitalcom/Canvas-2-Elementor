@@ -6,7 +6,9 @@ import { KeyStatus, ValidationResult } from '../types.js';
 // Bisa di-override lewat env var tanpa perlu redeploy kode.
 export const GEMINI_MODEL = process.env.GEMINI_MODEL_NAME || 'gemini-3.6-flash';
 
-const PER_KEY_TIMEOUT_MS = Number(process.env.GEMINI_PER_KEY_TIMEOUT_MS) || 25000;
+const PER_KEY_TIMEOUT_MS = Number(process.env.GEMINI_PER_KEY_TIMEOUT_MS) || 90000;
+const TOTAL_BUDGET_MS = Number(process.env.GEMINI_TOTAL_BUDGET_MS) || 270000;
+const MIN_REMAINING_MS_TO_ATTEMPT = 5000;
 const RATE_LIMIT_COOLDOWN_MS = Number(process.env.GEMINI_KEY_COOLDOWN_MS) || 60000;
 
 const keyCooldownUntil = new Map<string, number>();
@@ -217,6 +219,7 @@ export async function runConversion(
 
   const systemPrompt = buildSystemPrompt(rawHtml);
   let conversionResult: { html: string; keyIndexUsed: number } | null = null;
+  const runStartTime = Date.now();
 
   for (let attempt = 0; attempt < activeKeys.length; attempt++) {
     const currentKey = activeKeys[attempt];
@@ -229,10 +232,25 @@ export async function runConversion(
       continue;
     }
 
+    const remainingBudgetMs = TOTAL_BUDGET_MS - (Date.now() - runStartTime);
+    if (remainingBudgetMs < MIN_REMAINING_MS_TO_ATTEMPT) {
+      console.warn(`[C2E_BUDGET_EXHAUSTED] Sisa anggaran waktu total tinggal ${remainingBudgetMs}ms, menghentikan rotasi sebelum Key #${attempt + 1}/${activeKeys.length}.`);
+      for (let skipIdx = attempt; skipIdx < activeKeys.length; skipIdx++) {
+        keyStatuses[skipIdx].status = 'skipped';
+        keyStatuses[skipIdx].lastError = 'Anggaran waktu total request sudah habis, key ini tidak sempat dicoba';
+      }
+      break;
+    }
+
+    const effectiveTimeoutMs = Math.max(
+      1000,
+      Math.min(PER_KEY_TIMEOUT_MS, remainingBudgetMs - 1000)
+    );
+
     const keyStartTime = Date.now();
     keyStatuses[attempt].status = 'in_use';
 
-    console.log(`[C2E_KEY_TRY] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) - Calling Gemini API (${GEMINI_MODEL})...`);
+    console.log(`[C2E_KEY_TRY] Key #${attempt + 1}/${activeKeys.length} (${keyMasked}) - Calling Gemini API (${GEMINI_MODEL}), timeout budget: ${effectiveTimeoutMs}ms...`);
 
     try {
       const ai = new GoogleGenAI({
@@ -249,7 +267,7 @@ export async function runConversion(
           model: GEMINI_MODEL,
           contents: systemPrompt,
         }),
-        PER_KEY_TIMEOUT_MS,
+        effectiveTimeoutMs,
         `Key #${attempt + 1}`
       );
 

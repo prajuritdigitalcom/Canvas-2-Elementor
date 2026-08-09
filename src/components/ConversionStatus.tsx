@@ -106,6 +106,10 @@ export const ConversionStatus: React.FC<ConversionStatusProps> = ({
                 badgeBg = 'bg-rose-50 border-rose-200 text-rose-800';
                 icon = <AlertTriangle className="w-3 h-3 text-rose-600" />;
                 label = 'Network / Server Error';
+              } else if (k.status === 'skipped') {
+                badgeBg = 'bg-slate-100 border-slate-300 text-slate-600';
+                icon = <Clock className="w-3 h-3 text-slate-500" />;
+                label = 'Dilewati (Anggaran Waktu Habis)';
               }
 
               return (

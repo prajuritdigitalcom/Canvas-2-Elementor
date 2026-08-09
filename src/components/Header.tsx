@@ -1,13 +1,11 @@
 import React from 'react';
-import { Key, History, Sparkles, Server, ShieldAlert } from 'lucide-react';
+import { Key, Sparkles, Server, ShieldAlert } from 'lucide-react';
 
 interface HeaderProps {
   userKeyCount: number;
   serverKeyCount: number;
   serverKeysAvailable: boolean;
   onOpenKeysModal: () => void;
-  onOpenHistoryModal: () => void;
-  historyCount: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,8 +13,6 @@ export const Header: React.FC<HeaderProps> = ({
   serverKeyCount,
   serverKeysAvailable,
   onOpenKeysModal,
-  onOpenHistoryModal,
-  historyCount,
 }) => {
   return (
     <header className="bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-800 sticky top-0 z-40 shadow-sm">
@@ -64,21 +60,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md font-bold text-[11px] border border-rose-200 flex items-center gap-1">
                 <ShieldAlert className="w-3 h-3 inline" />
                 Kosong
-              </span>
-            )}
-          </button>
-
-          {/* History Button */}
-          <button
-            onClick={onOpenHistoryModal}
-            className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition-colors text-xs font-semibold text-slate-700"
-            title="Riwayat Konversi"
-          >
-            <History className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline">Riwayat</span>
-            {historyCount > 0 && (
-              <span className="bg-rose-50 text-[#fe4c6f] text-[10px] font-bold px-1.5 py-0.2 rounded-full border border-rose-200">
-                {historyCount}
               </span>
             )}
           </button>
