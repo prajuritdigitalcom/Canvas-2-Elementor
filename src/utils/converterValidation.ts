@@ -220,6 +220,18 @@ export function validateConvertedHtml(html: string, rawHtml?: string): Validatio
     }
   }
 
+  // 9. Check for invalid inverted CSS property names (e.g. items-align instead of align-items)
+  const invalidPropRegex = /\b(items-align|content-align|self-align|content-justify|items-justify|self-justify)\s*:/gi;
+  const invalidMatches = Array.from(html.matchAll(invalidPropRegex));
+  if (invalidMatches.length > 0) {
+    const invalidPropsFound = Array.from(new Set(invalidMatches.map((m) => m[1].toLowerCase())));
+    issues.push({
+      type: 'error',
+      code: 'INVALID_CSS_PROPERTY_NAME',
+      message: `Ditemukan ${invalidMatches.length} kemunculan nama properti CSS tidak valid/terbalik (${invalidPropsFound.join(', ')}). Gunakan nama resmi seperti align-items / justify-content.`,
+    });
+  }
+
   return {
     isValidDocStructure,
     isTailwindCdnRemoved,
